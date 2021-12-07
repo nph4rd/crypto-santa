@@ -66,7 +66,6 @@ impl SecretSanta {
         }
         // Now each player randomly permutes the vector
         // and reandomises each entry.
-        let mut shared_value = BigInt::mod_pow(&pp.g, &BigInt::from(1), &pp.p);
         for _ in self.players {
             let slice: &mut [ElGamalCiphertext] = &mut vec;
             let mut rng = thread_rng();
@@ -74,8 +73,6 @@ impl SecretSanta {
             vec = slice.to_vec();
             let y = BigInt::sample_below(&pp.q);
             vec = vec.iter().map(|x| rerandomise(&x, &y).unwrap()).collect();
-            shared_value = BigInt::mod_pow(&shared_value, &y, &pp.p);
-            println!("{:?}", vec);
         }
     }
 }
@@ -95,18 +92,4 @@ fn rerandomise(c: &ElGamalCiphertext, y: &BigInt) -> Result<ElGamalCiphertext, E
 fn main() {
     let ss = SecretSanta::new(8);
     ss.assign();
-    // ss.ask(1);
-    let group_id = SupportedGroups::FFDHE2048;
-    let alice_pp = ElGamalPP::generate_from_rfc7919(group_id);
-    let alice_key_pair = ElGamalKeyPair::generate(&alice_pp);
-    // Only works for the identity
-    let message = BigInt::from(1);
-    let first_cipher = ElGamal::encrypt(&message, &alice_key_pair.pk).unwrap();
-    let second_cipher = rerandomise(&first_cipher).unwrap();
-    let first_message_tag = ElGamal::decrypt(&first_cipher, &alice_key_pair.sk).unwrap();
-    let second_message_tag = ElGamal::decrypt(&second_cipher, &alice_key_pair.sk).unwrap();
-    println!(
-        "basic encryption: message: {}, first decryption: {}, second decryption {}",
-        message, first_message_tag, second_message_tag
-    );
 }
