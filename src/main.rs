@@ -1,3 +1,5 @@
+extern crate rand;
+
 use curv::arithmetic::traits::Modulo;
 use curv::arithmetic::traits::Samplable;
 use curv::BigInt;
@@ -5,6 +7,8 @@ use elgamal::{
     rfc7919_groups::SupportedGroups, ElGamal, ElGamalCiphertext, ElGamalError, ElGamalKeyPair,
     ElGamalPP,
 };
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 
 // Represents a single player.
 #[derive(Debug)]
@@ -43,27 +47,42 @@ impl SecretSanta {
     /// Function that "triggers" the protocol
     /// creating the random permutation of players
     /// in a "decentralised" way.
-    pub fn assign(self) {
+    pub fn assign(mut self) {
         // Build new ElGamal instance
         let group_id = SupportedGroups::FFDHE2048;
         let pp = ElGamalPP::generate_from_rfc7919(group_id);
-        let mut vec: Vec<BigInt> = Vec::new();
-        for mut p in self.players {
+        let mut vec: Vec<ElGamalCiphertext> = Vec::new();
+        for p in &mut self.players {
             p.key_pair = Some(ElGamalKeyPair::generate(&pp));
             let m = BigInt::from(1);
-            let c = ElGamal::encrypt(&m, &p.key_pair.unwrap().pk).unwrap();
-            vec.push(c.c2)
+            let y = BigInt::from(1);
+            let c = ElGamal::encrypt_from_predefined_randomness(
+                &m,
+                &p.key_pair.as_ref().unwrap().pk,
+                &y,
+            )
+            .unwrap();
+            vec.push(c)
         }
-        println!("{:?}", vec);
         // Now each player randomly permutes the vector
         // and reandomises each entry.
+        let mut shared_value = BigInt::mod_pow(&pp.g, &BigInt::from(1), &pp.p);
+        for _ in self.players {
+            let slice: &mut [ElGamalCiphertext] = &mut vec;
+            let mut rng = thread_rng();
+            slice.shuffle(&mut rng);
+            vec = slice.to_vec();
+            let y = BigInt::sample_below(&pp.q);
+            vec = vec.iter().map(|x| rerandomise(&x, &y).unwrap()).collect();
+            shared_value = BigInt::mod_pow(&shared_value, &y, &pp.p);
+            println!("{:?}", vec);
+        }
     }
 }
 
 /// Function that rerandomises a ciohertext. Note that this only works
 /// when the message `m` is the identity.
-fn rerandomise(c: &ElGamalCiphertext) -> Result<ElGamalCiphertext, ElGamalError> {
-    let y = BigInt::sample_below(&c.pp.q);
+fn rerandomise(c: &ElGamalCiphertext, y: &BigInt) -> Result<ElGamalCiphertext, ElGamalError> {
     let c1 = BigInt::mod_pow(&c.c1, &y, &c.pp.p);
     let c2 = BigInt::mod_pow(&c.c2, &y, &c.pp.p);
     Ok(ElGamalCiphertext {

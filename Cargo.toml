@@ -8,3 +8,4 @@ edition = "2018"
 [dependencies]
 curv-kzen = "0.9.0"
 elgamal = { git = "https://github.com/ZenGo-X/rust-elgamal" }
+rand = "0.8.4"
