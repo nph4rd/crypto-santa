@@ -25,7 +25,8 @@ struct Player {
 /// a secret santa that will be played out.
 #[derive(Debug)]
 struct SecretSanta {
-    /// The vector of players.
+    /// The vector of players that
+    /// will participate.
     players: Vec<Player>,
 }
 
@@ -34,6 +35,7 @@ impl SecretSanta {
     /// of a secret santa game with
     /// `n_players`.
     pub fn new(n_players: usize) -> Self {
+        println!("New secret 🎅 among {} players!", n_players);
         let mut players: Vec<Player> = Vec::new();
         for i in 1..n_players {
             players.push(Player {
@@ -51,10 +53,18 @@ impl SecretSanta {
         // Build new ElGamal instance
         let group_id = SupportedGroups::FFDHE2048;
         let pp = ElGamalPP::generate_from_rfc7919(group_id);
+        // Use this as a flag whenever a player
+        // finds that she has been self-assigned.
         let mut finished = false;
         while !finished {
             finished = true;
+            // We instantiate the vector of ElGamal
+            // ciphertexts.
             let mut vec: Vec<ElGamalCiphertext> = Vec::new();
+            // The first round consists of each player
+            // adding an encryption of the identity,
+            // with "randomness" 1. That is, each player
+            // adds its public-key `g^x`.
             for p in &mut self.players {
                 p.key_pair = Some(ElGamalKeyPair::generate(&pp));
                 let m = BigInt::from(1);
@@ -81,10 +91,17 @@ impl SecretSanta {
             // now each can find out who they give a present
             // to, but only that.
             for p in &mut self.players {
-                let shared_value = vec.get(0).unwrap();
+                // Each player can get the shared value, `g^\hat{s}`
+                // from any of the ciphertexts (c1).
+                let shared_value = &vec.get(0).unwrap().c1;
+                // Each player now finds their assignment by
+                // raising the shared value to her secret key `x`.
                 let target_value =
-                    BigInt::mod_pow(&shared_value.c1, &p.key_pair.as_ref().unwrap().sk.x, &pp.p);
+                    BigInt::mod_pow(&shared_value, &p.key_pair.as_ref().unwrap().sk.x, &pp.p);
                 p.gives_to = Some(vec.iter().position(|x| x.c2 == target_value).unwrap() as u8 + 1);
+                // If the player finds out that she has
+                // been self assigned, then she "announces"
+                // this and the assignment starts over again.
                 if p.id == p.gives_to.unwrap() {
                     finished = false;
                     break;
@@ -107,9 +124,12 @@ fn rerandomise(c: &ElGamalCiphertext, y: &BigInt) -> Result<ElGamalCiphertext, E
 }
 
 fn main() {
+    // Instantiate a new SecretSanta with 10 players.
     let mut ss = SecretSanta::new(10);
+    // Run the protocol.
     ss.assign();
+    // Find out the assignment:
     for p in &ss.players {
-        println!("{:?} gives to: {:?}", p.id, p.gives_to.unwrap());
+        println!("{:?} gives 🎁 to: {:?}", p.id, p.gives_to.unwrap());
     }
 }
