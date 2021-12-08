@@ -47,32 +47,49 @@ impl SecretSanta {
     /// Function that "triggers" the protocol
     /// creating the random permutation of players
     /// in a "decentralised" way.
-    pub fn assign(mut self) {
+    pub fn assign(&mut self) {
         // Build new ElGamal instance
         let group_id = SupportedGroups::FFDHE2048;
         let pp = ElGamalPP::generate_from_rfc7919(group_id);
-        let mut vec: Vec<ElGamalCiphertext> = Vec::new();
-        for p in &mut self.players {
-            p.key_pair = Some(ElGamalKeyPair::generate(&pp));
-            let m = BigInt::from(1);
-            let y = BigInt::from(1);
-            let c = ElGamal::encrypt_from_predefined_randomness(
-                &m,
-                &p.key_pair.as_ref().unwrap().pk,
-                &y,
-            )
-            .unwrap();
-            vec.push(c)
-        }
-        // Now each player randomly permutes the vector
-        // and reandomises each entry.
-        for _ in self.players {
-            let slice: &mut [ElGamalCiphertext] = &mut vec;
-            let mut rng = thread_rng();
-            slice.shuffle(&mut rng);
-            vec = slice.to_vec();
-            let y = BigInt::sample_below(&pp.q);
-            vec = vec.iter().map(|x| rerandomise(&x, &y).unwrap()).collect();
+        let mut finished = false;
+        while !finished {
+            finished = true;
+            let mut vec: Vec<ElGamalCiphertext> = Vec::new();
+            for p in &mut self.players {
+                p.key_pair = Some(ElGamalKeyPair::generate(&pp));
+                let m = BigInt::from(1);
+                let y = BigInt::from(1);
+                let c = ElGamal::encrypt_from_predefined_randomness(
+                    &m,
+                    &p.key_pair.as_ref().unwrap().pk,
+                    &y,
+                )
+                .unwrap();
+                vec.push(c)
+            }
+            // Now each player randomly permutes the vector
+            // and reandomises each entry.
+            for _ in &self.players {
+                let slice: &mut [ElGamalCiphertext] = &mut vec;
+                let mut rng = thread_rng();
+                slice.shuffle(&mut rng);
+                vec = slice.to_vec();
+                let y = BigInt::sample_below(&pp.q);
+                vec = vec.iter().map(|x| rerandomise(&x, &y).unwrap()).collect();
+            }
+            // The vector is broadcasted to every player and
+            // now each can find out who they give a present
+            // to, but only that.
+            for p in &mut self.players {
+                let shared_value = vec.get(0).unwrap();
+                let target_value =
+                    BigInt::mod_pow(&shared_value.c1, &p.key_pair.as_ref().unwrap().sk.x, &pp.p);
+                p.gives_to = Some(vec.iter().position(|x| x.c2 == target_value).unwrap() as u8 + 1);
+                if p.id == p.gives_to.unwrap() {
+                    finished = false;
+                    break;
+                }
+            }
         }
     }
 }
@@ -90,6 +107,9 @@ fn rerandomise(c: &ElGamalCiphertext, y: &BigInt) -> Result<ElGamalCiphertext, E
 }
 
 fn main() {
-    let ss = SecretSanta::new(8);
+    let mut ss = SecretSanta::new(10);
     ss.assign();
+    for p in &ss.players {
+        println!("{:?} gives to: {:?}", p.id, p.gives_to.unwrap());
+    }
 }
