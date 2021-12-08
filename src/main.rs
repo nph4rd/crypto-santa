@@ -111,7 +111,7 @@ impl SecretSanta {
     }
 }
 
-/// Function that rerandomises a ciohertext. Note that this only works
+/// Function that rerandomises a ciphertext. Note that this only works
 /// when the message `m` is the identity.
 fn rerandomise(c: &ElGamalCiphertext, y: &BigInt) -> Result<ElGamalCiphertext, ElGamalError> {
     let c1 = BigInt::mod_pow(&c.c1, &y, &c.pp.p);
